@@ -1,12 +1,11 @@
+
 import React, { useState, useMemo } from 'react';
-import { Masseuse, Booking, User, SlotToBook } from './types';
-import { MASSEUSES, USERS } from './constants';
-import { getWorkWeekDays, getStartOfWeek, getEndOfWeek, isSameDay, formatToISODate, isPastTime } from './utils/dateUtils';
-import { MasseuseSelector } from './components/MasseuseSelector';
+import { Masseuse, Booking, User, SlotToBook, HolidayType, HolidaySchedule, CancelledBookingNotification } from './types';
+import { MASSEUSES, CURRENT_USER, PUBLIC_HOLIDAYS } from './constants';
+import { getWorkWeekDays, getStartOfWeek, getEndOfWeek, isSameDay, formatToISODate, isPastTime, getBookableDays, parseISODate } from './utils/dateUtils';
 import { WeekNavigator } from './components/WeekNavigator';
 import { WeekTimeTable } from './components/TimeTable';
 import { BookingSummary } from './components/BookingSummary';
-import { UserSwitcher } from './components/UserSwitcher';
 import { ConfirmationModal } from './components/ConfirmationModal';
 
 type ViewMode = 'user' | 'admin';
@@ -34,13 +33,13 @@ const AdminView: React.FC<{
   currentDate: Date;
   onWeekChange: (direction: 'prev' | 'next') => void;
   masseuses: Masseuse[];
-  holidays: Record<string, string[]>;
-  onToggleHoliday: (masseuseId: string, date: Date) => void;
-}> = ({ currentDate, onWeekChange, masseuses, holidays, onToggleHoliday }) => {
+  holidays: HolidaySchedule;
+  onCycleHoliday: (masseuseId: string, date: Date) => void;
+}> = ({ currentDate, onWeekChange, masseuses, holidays, onCycleHoliday }) => {
   const [selectedAdminId, setSelectedAdminId] = useState(masseuses[0].id);
   const workWeekDays = getWorkWeekDays(currentDate);
   const dayNames = ['월', '화', '수', '목', '금'];
-  const adminHolidays = holidays[selectedAdminId] || [];
+  const adminHolidays = holidays[selectedAdminId] || {};
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -61,21 +60,44 @@ const AdminView: React.FC<{
       <WeekNavigator currentDate={currentDate} onWeekChange={onWeekChange} />
       <div className="bg-white p-4 rounded-xl shadow-md">
         <h3 className="text-lg font-bold mb-4 text-slate-700">휴일 설정</h3>
-        <p className="text-sm text-slate-500 mb-4">날짜를 클릭하여 휴일로 설정하거나 해제하세요.</p>
+        <p className="text-sm text-slate-500 mb-4">날짜를 클릭하여 근무, 종일 휴무, 오전/오후 반차 순으로 상태를 변경하세요.</p>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
           {workWeekDays.map((day, index) => {
             const isoDate = formatToISODate(day);
-            const isHoliday = adminHolidays.includes(isoDate);
+            const holidayType = adminHolidays[isoDate];
             const isPast = isPastTime(day, '23:59');
+            const isPublicHoliday = PUBLIC_HOLIDAYS.includes(isoDate);
+
+            let statusText = '근무';
             let buttonClass = 'flex flex-col items-center p-3 rounded-lg transition-colors border-2 ';
-            if (isPast) buttonClass += 'bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200';
-            else if (isHoliday) buttonClass += 'bg-red-100 text-red-700 border-red-300 hover:bg-red-200';
-            else buttonClass += 'bg-green-50 text-green-800 border-green-200 hover:bg-green-100';
+            
+            if (isPublicHoliday) {
+                statusText = '공휴일';
+                buttonClass += 'bg-gray-200 text-gray-500 cursor-not-allowed border-gray-300';
+            } else if (isPast) {
+              buttonClass += 'bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200';
+              statusText = holidayType ? '휴일' : '지나감';
+            } else {
+                if (!holidayType) {
+                    statusText = '근무';
+                    buttonClass += 'bg-green-50 text-green-800 border-green-200 hover:bg-green-100';
+                } else if (holidayType === 'full') {
+                    statusText = '종일 휴무';
+                    buttonClass += 'bg-red-100 text-red-700 border-red-300 hover:bg-red-200';
+                } else if (holidayType === 'am') {
+                    statusText = '오전 반차';
+                    buttonClass += 'bg-yellow-100 text-yellow-800 border-yellow-300 hover:bg-yellow-200';
+                } else if (holidayType === 'pm') {
+                    statusText = '오후 반차';
+                    buttonClass += 'bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-200';
+                }
+            }
+
             return (
-              <button key={isoDate} disabled={isPast} onClick={() => onToggleHoliday(selectedAdminId, day)} className={buttonClass}>
+              <button key={isoDate} disabled={isPast || isPublicHoliday} onClick={() => onCycleHoliday(selectedAdminId, day)} className={buttonClass}>
                 <span className="font-semibold">{dayNames[index]}</span>
                 <span className="text-lg mt-1">{day.getDate()}</span>
-                <span className="text-xs mt-2 font-bold">{isHoliday ? '휴일' : '근무'}</span>
+                <span className="text-xs mt-2 font-bold">{statusText}</span>
               </button>
             );
           })}
@@ -86,25 +108,20 @@ const AdminView: React.FC<{
 };
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<User>(USERS[0]);
+  const currentUser = CURRENT_USER;
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [selectedMasseuseId, setSelectedMasseuseId] = useState<string>(MASSEUSES[0].id);
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const [adminCurrentDate, setAdminCurrentDate] = useState(new Date());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [slotToBook, setSlotToBook] = useState<SlotToBook | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('user');
-  const [holidays, setHolidays] = useState<Record<string, string[]>>({});
+  const [holidays, setHolidays] = useState<HolidaySchedule>({});
+  const [cancellationNotifications, setCancellationNotifications] = useState<CancelledBookingNotification[]>([]);
 
-  const selectedMasseuse = useMemo(() => MASSEUSES.find(m => m.id === selectedMasseuseId)!, [selectedMasseuseId]);
-  const workWeekDays = useMemo(() => getWorkWeekDays(currentDate), [currentDate]);
 
-  const handleUserChange = (userId: string) => {
-    const user = USERS.find(u => u.id === userId);
-    if (user) setCurrentUser(user);
-  };
+  const availableDays = useMemo(() => getBookableDays(new Date(), PUBLIC_HOLIDAYS), []);
 
-  const handleWeekChange = (direction: 'prev' | 'next') => {
-    setCurrentDate(prev => {
+  const handleAdminWeekChange = (direction: 'prev' | 'next') => {
+    setAdminCurrentDate(prev => {
       const newDate = new Date(prev);
       newDate.setDate(prev.getDate() + (direction === 'prev' ? -7 : 7));
       return newDate;
@@ -115,36 +132,93 @@ export default function App() {
     setBookings(prev => prev.filter(b => b.id !== bookingId));
   };
   
-  const handleToggleHoliday = (masseuseId: string, date: Date) => {
+  const handleCycleHoliday = (masseuseId: string, date: Date) => {
     const isoDate = formatToISODate(date);
+    const currentType = holidays[masseuseId]?.[isoDate];
+
+    let nextType: HolidayType | null = null;
+    let reasonText = '';
+    if (!currentType) { nextType = 'full'; reasonText = '종일 휴무'; }
+    else if (currentType === 'full') { nextType = 'am'; reasonText = '오전 반차'; }
+    else if (currentType === 'am') { nextType = 'pm'; reasonText = '오후 반차'; }
+    else if (currentType === 'pm') { nextType = null; }
+
     setHolidays(prev => {
-      const currentHolidays = prev[masseuseId] || [];
-      const newHolidays = currentHolidays.includes(isoDate)
-        ? currentHolidays.filter(d => d !== isoDate)
-        : [...currentHolidays, isoDate];
-      return { ...prev, [masseuseId]: newHolidays };
+        const newHolidays = { ...prev };
+        const masseuseHolidays = { ...(newHolidays[masseuseId] || {}) };
+        
+        if (nextType) {
+            masseuseHolidays[isoDate] = nextType;
+        } else {
+            delete masseuseHolidays[isoDate];
+        }
+
+        if (Object.keys(masseuseHolidays).length > 0) {
+            newHolidays[masseuseId] = masseuseHolidays;
+        } else {
+            delete newHolidays[masseuseId];
+        }
+        return newHolidays;
+    });
+
+    setBookings(prevBookings => {
+      const bookingsToCancel = prevBookings.filter(b => {
+        if (b.masseuseId !== masseuseId || b.date !== isoDate) {
+          return false;
+        }
+        if (!nextType) return false;
+        if (nextType === 'full') return true;
+
+        const slotHour = parseInt(b.time.split(':')[0], 10);
+        if (nextType === 'am' && slotHour < 13) return true;
+        if (nextType === 'pm' && slotHour >= 13) return true;
+        
+        return false;
+      });
+
+      if (bookingsToCancel.length > 0) {
+        const newNotifications: CancelledBookingNotification[] = bookingsToCancel.map(b => ({
+          ...b,
+          reason: `담당자 ${reasonText}`
+        }));
+        setCancellationNotifications(prev => [...prev, ...newNotifications]);
+      }
+
+      return prevBookings.filter(b => !bookingsToCancel.some(cancelled => cancelled.id === b.id));
     });
   };
 
-  const handleBookSlot = (date: Date, time: string) => {
-    const startOfWeek = getStartOfWeek(date);
-    const endOfWeek = getEndOfWeek(date);
-    const userBookingsThisWeek = bookings.filter(b => {
-        const bookingDate = new Date(b.date);
-        return b.userId === currentUser.id && bookingDate >= startOfWeek && bookingDate <= endOfWeek;
+  const handleDismissNotification = (bookingId: string) => {
+    setCancellationNotifications(prev => prev.filter(n => n.id !== bookingId));
+  };
+
+  const handleBookSlot = (masseuseId: string, date: Date, time: string) => {
+    const masseuse = MASSEUSES.find(m => m.id === masseuseId)!;
+
+    if (bookings.some(b => b.userId === currentUser.id && b.date === formatToISODate(date))) {
+      alert('하루에 한 번만 예약할 수 있습니다.');
+      return;
+    }
+
+    const bookingWeekStart = getStartOfWeek(date);
+    const bookingWeekEnd = getEndOfWeek(date);
+    const bookingsInSameWeek = bookings.filter(b => {
+      if (b.userId !== currentUser.id) return false;
+      const bookingDate = parseISODate(b.date);
+      return bookingDate >= bookingWeekStart && bookingDate <= bookingWeekEnd;
     });
 
-    if (userBookingsThisWeek.length >= 2) {
-        alert('한 주에 2번까지만 예약할 수 있습니다.'); return;
-    }
-    if (userBookingsThisWeek.some(b => isSameDay(new Date(b.date), date))) {
-        alert('하루에 2번 예약할 수 없습니다.'); return;
-    }
-    if (userBookingsThisWeek.some(b => b.masseuseId === selectedMasseuse.id)) {
-        alert('같은 마사지사에게는 주 1회만 예약할 수 있습니다.'); return;
+    if (bookingsInSameWeek.length >= 2) {
+      alert('한 주에 2번까지만 예약할 수 있습니다.');
+      return;
     }
 
-    setSlotToBook({ masseuse: selectedMasseuse, date: date, time });
+    if (bookingsInSameWeek.some(b => b.masseuseId === masseuseId)) {
+      alert('같은 주임님에게 주 2회 리프레시 이용이 불가합니다.');
+      return;
+    }
+
+    setSlotToBook({ masseuse, date, time });
     setIsModalOpen(true);
   };
   
@@ -169,44 +243,44 @@ export default function App() {
           <div>
             <h1 className="text-3xl font-bold text-teal-600">마사지 예약 시스템</h1>
             <p className="text-slate-500 mt-1">
-              {viewMode === 'user' ? '원하는 마사지사와 시간을 선택하여 예약하세요.' : '관리자 페이지: 마사지사 휴일을 설정하세요.'}
+              {viewMode === 'user' ? '오늘부터 예약 가능한 날짜의 스케줄입니다.' : '관리자 페이지: 마사지사 휴일을 설정하세요.'}
             </p>
           </div>
-          <div className="flex items-center space-x-4">
-            {viewMode === 'user' && <UserSwitcher users={USERS} currentUser={currentUser} onUserChange={handleUserChange} />}
-            <ViewSwitcher viewMode={viewMode} onViewChange={setViewMode} />
-          </div>
+          <ViewSwitcher viewMode={viewMode} onViewChange={setViewMode} />
         </header>
-
-        <main>
-          {viewMode === 'admin' ? (
-            <AdminView
-              currentDate={currentDate}
-              onWeekChange={handleWeekChange}
-              masseuses={MASSEUSES}
-              holidays={holidays}
-              onToggleHoliday={handleToggleHoliday}
-            />
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 space-y-6">
-                <MasseuseSelector masseuses={MASSEUSES} selectedMasseuseId={selectedMasseuseId} onSelect={setSelectedMasseuseId} />
-                <WeekNavigator currentDate={currentDate} onWeekChange={handleWeekChange} />
-                <WeekTimeTable
-                  workWeekDays={workWeekDays}
-                  masseuseId={selectedMasseuseId}
-                  bookings={bookings}
-                  holidays={holidays}
-                  onBookSlot={handleBookSlot}
-                />
-              </div>
-              <div className="lg:col-span-1">
-                <BookingSummary bookings={bookings} currentUser={currentUser} masseuses={MASSEUSES} onCancelBooking={handleCancelBooking} />
-              </div>
-            </div>
-          )}
-        </main>
       </div>
+
+      <main>
+        {viewMode === 'admin' ? (
+          <AdminView
+            currentDate={adminCurrentDate}
+            onWeekChange={handleAdminWeekChange}
+            masseuses={MASSEUSES}
+            holidays={holidays}
+            onCycleHoliday={handleCycleHoliday}
+          />
+        ) : (
+          <>
+            <WeekTimeTable
+              scheduleDays={availableDays}
+              masseuses={MASSEUSES}
+              bookings={bookings}
+              holidays={holidays}
+              currentUser={currentUser}
+              onBookSlot={handleBookSlot}
+            />
+            <BookingSummary 
+              bookings={bookings} 
+              currentUser={currentUser} 
+              masseuses={MASSEUSES} 
+              onCancelBooking={handleCancelBooking}
+              cancelledNotifications={cancellationNotifications.filter(n => n.userId === currentUser.id)}
+              onDismissNotification={handleDismissNotification}
+            />
+          </>
+        )}
+      </main>
+      
       <ConfirmationModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}

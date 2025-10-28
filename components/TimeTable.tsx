@@ -1,76 +1,123 @@
+
 import React from 'react';
-import { Booking } from '../types';
-import { TIME_SLOTS } from '../constants';
-import { formatToISODate, isPastTime } from '../utils/dateUtils';
+import { Booking, HolidaySchedule, Masseuse, User } from '../types';
+import { TIME_SLOTS_DETAILS } from '../constants';
+import { formatToISODate, isPastTime, getStartOfWeek, getEndOfWeek, parseISODate } from '../utils/dateUtils';
 
 interface WeekTimeTableProps {
-  workWeekDays: Date[];
-  masseuseId: string;
+  scheduleDays: Date[];
+  masseuses: Masseuse[];
   bookings: Booking[];
-  holidays: Record<string, string[]>;
-  onBookSlot: (date: Date, time: string) => void;
+  holidays: HolidaySchedule;
+  currentUser: User;
+  onBookSlot: (masseuseId: string, date: Date, time: string) => void;
 }
 
-export const WeekTimeTable: React.FC<WeekTimeTableProps> = ({ workWeekDays, masseuseId, bookings, holidays, onBookSlot }) => {
-  const masseuseHolidays = holidays[masseuseId] || [];
-  const dayNames = ['월', '화', '수', '목', '금'];
-  
+export const WeekTimeTable: React.FC<WeekTimeTableProps> = ({ scheduleDays, masseuses, bookings, currentUser, holidays, onBookSlot }) => {
   return (
     <div className="bg-white p-4 rounded-xl shadow-md mt-6 overflow-x-auto">
-      <h3 className="text-xl font-bold mb-4 text-slate-700">
-        주간 예약 가능 시간
-      </h3>
-      <div className="grid grid-cols-6 gap-2 min-w-[700px]">
-        {/* Header: Time slot labels */}
-        <div className="font-bold text-center py-2 sticky left-0 bg-white">시간</div>
-        {workWeekDays.map((day, index) => (
-          <div key={day.toISOString()} className="font-bold text-center py-2">
-            <p>{dayNames[index]}</p>
-            <p className="text-sm font-normal text-slate-500">{day.getDate()}</p>
-          </div>
-        ))}
-        
-        {/* Time slots rows */}
-        {TIME_SLOTS.map(time => (
-          <React.Fragment key={time}>
-            <div className="font-semibold text-center py-3 sticky left-0 bg-white">{time}</div>
-            {workWeekDays.map(day => {
-              const isoDate = formatToISODate(day);
-              const isHoliday = masseuseHolidays.includes(isoDate);
-              const isBooked = bookings.some(b => b.masseuseId === masseuseId && b.date === isoDate && b.time === time);
-              const isPast = isPastTime(day, time);
-              const isDisabled = isHoliday || isBooked || isPast;
+      <table className="w-full border-collapse text-center min-w-[1200px]">
+        <thead>
+          <tr className="bg-slate-100">
+            <th className="p-3 font-semibold text-slate-600 border border-slate-200 sticky left-0 bg-slate-100 z-20 w-[100px]">날짜</th>
+            <th className="p-3 font-semibold text-slate-600 border border-slate-200 sticky left-[100px] bg-slate-100 z-20 w-[100px]">담당자</th>
+            {TIME_SLOTS_DETAILS.map(slot => (
+              <th key={slot.time} className="p-2 font-semibold text-slate-600 border border-slate-200 text-sm">
+                <span className="font-bold">{slot.session}</span>
+                <br />
+                <span className="font-normal text-xs">{slot.display.replace('-', '- ')}</span>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {scheduleDays.map((day, dayIndex) => (
+            <React.Fragment key={day.toISOString()}>
+              {masseuses.map((masseuse, masseuseIndex) => (
+                <tr 
+                  key={masseuse.id} 
+                  className={`even:bg-slate-50/50 ${masseuseIndex === 0 && dayIndex > 0 ? 'border-t-4 border-slate-300' : ''}`}
+                >
+                  {masseuseIndex === 0 && (
+                    <td rowSpan={masseuses.length} className="p-2 border border-slate-200 font-semibold text-slate-700 sticky left-0 bg-white z-10 w-[100px]">
+                      {day.toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' })}
+                      <br/>
+                      ({day.toLocaleDateString('ko-KR', { weekday: 'short' })})
+                    </td>
+                  )}
+                  <td className="p-2 border border-slate-200 font-semibold text-slate-700 sticky left-[100px] bg-white z-10 w-[100px]">{masseuse.name}</td>
+                  {TIME_SLOTS_DETAILS.map(({ time }) => {
+                    const isoDate = formatToISODate(day);
+                    const holidayType = holidays[masseuse.id]?.[isoDate];
+                    let isHoliday = false;
 
-              let buttonClass = 'p-3 rounded-lg font-semibold transition-transform transform focus:outline-none focus:ring-2 focus:ring-offset-2 w-full text-sm ';
-              let buttonText = time;
+                    if (holidayType === 'full') {
+                      isHoliday = true;
+                    } else if (holidayType === 'am') {
+                      const slotHour = parseInt(time.split(':')[0], 10);
+                      if (slotHour < 13) isHoliday = true;
+                    } else if (holidayType === 'pm') {
+                      const slotHour = parseInt(time.split(':')[0], 10);
+                      if (slotHour >= 13) isHoliday = true;
+                    }
 
-              if (isHoliday) {
-                buttonClass += 'bg-red-100 text-red-400 cursor-not-allowed';
-                buttonText = '휴일';
-              } else if (isBooked) {
-                buttonClass += 'bg-slate-200 text-slate-400 cursor-not-allowed';
-                buttonText = '예약완료';
-              } else if (isPast) {
-                buttonClass += 'bg-slate-100 text-slate-400 cursor-not-allowed';
-              } else {
-                buttonClass += 'bg-teal-100 text-teal-800 hover:bg-teal-200 hover:scale-105 active:scale-100 focus:ring-teal-500';
-              }
+                    const booking = bookings.find(b => b.masseuseId === masseuse.id && b.date === isoDate && b.time === time);
+                    const isPast = isPastTime(day, time);
+                    
+                    const cellClass = "p-0 border border-slate-200 h-14";
+                    let content;
 
-              return (
-                <div key={`${isoDate}-${time}`} className="flex items-center justify-center">
-                  <button
-                    disabled={isDisabled}
-                    onClick={() => onBookSlot(day, time)}
-                    className={buttonClass}
-                  >
-                    {buttonText}
-                  </button>
-                </div>
-              );
-            })}
-          </React.Fragment>
-        ))}
-      </div>
+                    if (isHoliday) {
+                      content = <div className="w-full h-full bg-slate-200 flex items-center justify-center text-slate-500 text-sm font-medium">휴무</div>;
+                    } else if (booking) {
+                      const colorClass = booking.userId === currentUser.id ? 'bg-teal-500' : 'bg-gray-300';
+                      const name = booking.userId === currentUser.id ? currentUser.name : '예약완료';
+                      content = <div className={`w-full h-full ${colorClass} text-white flex items-center justify-center font-bold text-sm`}>{name}</div>;
+                    } else if (isPast) {
+                      content = <div className="w-full h-full bg-slate-50"></div>;
+                    } else {
+                      let isButtonDisabled = false;
+
+                      if (bookings.some(b => b.userId === currentUser.id && b.date === isoDate)) {
+                        isButtonDisabled = true;
+                      }
+                      
+                      if (!isButtonDisabled) {
+                        const bookingWeekStart = getStartOfWeek(day);
+                        const bookingWeekEnd = getEndOfWeek(day);
+                        const bookingsInSameWeek = bookings.filter(b => {
+                            if (b.userId !== currentUser.id) return false;
+                            const bookingDate = parseISODate(b.date);
+                            return bookingDate >= bookingWeekStart && bookingDate <= bookingWeekEnd;
+                        });
+
+                        if (bookingsInSameWeek.length >= 2) {
+                            isButtonDisabled = true;
+                        } else if (bookingsInSameWeek.some(b => b.masseuseId === masseuse.id)) {
+                            isButtonDisabled = true;
+                        }
+                      }
+
+                      content = (
+                        <button
+                          onClick={() => onBookSlot(masseuse.id, day, time)}
+                          className="w-full h-full text-teal-600 hover:bg-teal-100 transition-colors text-sm font-semibold disabled:bg-slate-100 disabled:cursor-not-allowed"
+                          aria-label={`${masseuse.name} ${time} 예약`}
+                          disabled={isButtonDisabled}
+                        >
+                          {isButtonDisabled ? '' : '예약'}
+                        </button>
+                      );
+                    }
+                    
+                    return <td key={`${isoDate}-${time}-${masseuse.id}`} className={cellClass}>{content}</td>;
+                  })}
+                </tr>
+              ))}
+            </React.Fragment>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 };

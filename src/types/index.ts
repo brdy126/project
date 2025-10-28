@@ -1,3 +1,4 @@
+
 export interface Masseuse {
   id: string;
   name: string;
@@ -8,9 +9,10 @@ export interface Masseuse {
 export interface Booking {
   id: string;
   userId: string;
+  userName: string;
   masseuseId: string;
-  date: string; // ISO string for date
-  time: string; // e.g., "09:00"
+  date: string; // ISO string for date "YYYY-MM-DD"
+  time: string; // e.g., "10:00"
 }
 
 export interface User {

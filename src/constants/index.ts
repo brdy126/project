@@ -1,28 +1,20 @@
 
-import { Masseuse, User } from './types';
+import { Masseuse, User } from '../types';
 
 export const MASSEUSES: Masseuse[] = [
-  {
-    id: '1',
-    name: '이춘희',
-    specialty: '스웨디시 마사지',
-    imageUrl: 'https://picsum.photos/seed/chunhee/300/300',
-  },
-  {
-    id: '2',
-    name: '최덕삼',
-    specialty: '딥티슈 마사지',
-    imageUrl: 'https://picsum.photos/seed/deoksam/300/300',
-  },
-  {
-    id: '3',
-    name: '홍주희',
-    specialty: '아로마 테라피',
-    imageUrl: 'https://picsum.photos/seed/juhee/300/300',
-  },
+  { id: '1', name: '이춘희', specialty: '스웨디시 마사지', imageUrl: 'https://picsum.photos/seed/chunhee/300/300' },
+  { id: '2', name: '최덕삼', specialty: '딥티슈 마사지', imageUrl: 'https://picsum.photos/seed/deoksam/300/300' },
+  { id: '3', name: '홍주희', specialty: '아로마 테라피', imageUrl: 'https://picsum.photos/seed/juhee/300/300' },
 ];
 
-export const CURRENT_USER: User = { id: 'user1', name: '김예약' };
+export const ALL_USERS: User[] = [
+  { id: 'user1', name: '김예약' },
+  { id: 'user2', name: '박선호' },
+  { id: 'user3', name: '이민준' },
+  { id: 'user4', name: '최유리' },
+];
+
+export const CURRENT_USER: User = ALL_USERS[0];
 
 export const TIME_SLOTS_DETAILS: { session: string; time: string; display: string }[] = [
     { session: '1차', time: '10:00', display: '10:00-10:20' },
@@ -43,19 +35,7 @@ export const TIME_SLOTS: string[] = TIME_SLOTS_DETAILS.map(slot => slot.time);
 
 // South Korean Public Holidays for 2025
 export const PUBLIC_HOLIDAYS: string[] = [
-  '2025-01-01', // New Year's Day
-  '2025-01-28', // Seollal
-  '2025-01-29', // Seollal
-  '2025-01-30', // Seollal
-  '2025-03-01', // Independence Movement Day
-  '2025-05-05', // Children's Day
-  '2025-05-06', // Buddha's Birthday (Substitute Holiday)
-  '2025-06-06', // Memorial Day
-  '2025-08-15', // Liberation Day
-  '2025-10-03', // National Foundation Day
-  '2025-10-05', // Chuseok
-  '2025-10-06', // Chuseok
-  '2025-10-07', // Chuseok
-  '2025-10-09', // Hangeul Day
-  '2025-12-25', // Christmas Day
+  '2025-01-01', '2025-01-28', '2025-01-29', '2025-01-30', '2025-03-01',
+  '2025-05-05', '2025-05-06', '2025-06-06', '2025-08-15', '2025-10-03',
+  '2025-10-05', '2025-10-06', '2025-10-07', '2025-10-09', '2025-12-25',
 ];

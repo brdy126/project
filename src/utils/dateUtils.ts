@@ -1,3 +1,4 @@
+
 export const getStartOfWeek = (date: Date): Date => {
   const d = new Date(date);
   const day = d.getDay(); // Sunday: 0, Monday: 1, ...
@@ -5,6 +6,14 @@ export const getStartOfWeek = (date: Date): Date => {
   const start = new Date(d.setDate(diff));
   start.setHours(0, 0, 0, 0);
   return start;
+};
+
+export const getEndOfWeek = (date: Date): Date => {
+  const start = getStartOfWeek(date);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+  return end;
 };
 
 export const getWeekDays = (date: Date): Date[] => {
@@ -31,13 +40,12 @@ export const getWorkWeekDays = (date: Date): Date[] => {
 
 export const getBookableDays = (startDate: Date, publicHolidays: string[]): Date[] => {
     const bookableDays: Date[] = [];
-    const dayLimit = 8; // Today + 7 days
+    const dayLimit = 8;
     let daysAdded = 0;
     let daysChecked = 0;
     let currentDate = new Date(startDate);
     currentDate.setHours(0, 0, 0, 0);
 
-    // Continue checking for more than 8 calendar days if needed to find 8 bookable days
     while (daysAdded < dayLimit && daysChecked < 30) { 
         const dayOfWeek = currentDate.getDay();
         const isoDate = formatToISODate(currentDate);
@@ -51,15 +59,6 @@ export const getBookableDays = (startDate: Date, publicHolidays: string[]): Date
     }
     return bookableDays;
 };
-
-
-export const getEndOfWeek = (date: Date): Date => {
-  const start = getStartOfWeek(date);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  end.setHours(23, 59, 59, 999);
-  return end;
-}
 
 export const isSameDay = (d1: Date, d2: Date): boolean => {
   return d1.getFullYear() === d2.getFullYear() &&
@@ -76,7 +75,6 @@ export const formatToISODate = (date: Date): string => {
 
 export const parseISODate = (isoDate: string): Date => {
     const [year, month, day] = isoDate.split('-').map(Number);
-    // Creates a date in the local timezone at midnight
     return new Date(year, month - 1, day);
 };
 
