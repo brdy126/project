@@ -1,0 +1,5 @@
+{
+  "name": "Massage Therapy Booking",
+  "description": "A web application to schedule massage appointments with a team of professional therapists. Users can view weekly schedules (Mon-Fri) and book sessions. An admin page allows therapists to mark their holidays.",
+  "requestFramePermissions": []
+}
